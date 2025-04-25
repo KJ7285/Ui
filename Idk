@@ -1,257 +1,436 @@
 --[[
-    Advanced UI Library v3.2.1
+    Advanced UI Library v3.0
     Features:
-    - Modern, fluent design system
-    - Fully customizable components
+    - Fully customizable UI elements
     - Animation system
-    - Theme support (light/dark/custom)
-    - Responsive layout system
+    - Theme support
     - Advanced input handling
-    - Built-in effects (ripple, glow, etc.)
-    - Optimized performance
-    - Mobile/desktop adaptive
+    - Responsive design
+    - Built-in security
 ]]
 
 local AdvancedUILibrary = {}
 AdvancedUILibrary.__index = AdvancedUILibrary
 
--- Constants
-local DEFAULT_THEME = {
-    Primary = Color3.fromRGB(0, 120, 215),
-    Secondary = Color3.fromRGB(100, 150, 200),
-    Success = Color3.fromRGB(40, 167, 69),
-    Danger = Color3.fromRGB(220, 53, 69),
-    Warning = Color3.fromRGB(255, 193, 7),
-    Info = Color3.fromRGB(23, 162, 184),
-    Light = Color3.fromRGB(248, 249, 250),
-    Dark = Color3.fromRGB(33, 37, 41),
-    Background = Color3.fromRGB(25, 25, 25),
-    Surface = Color3.fromRGB(40, 40, 40),
-    TextPrimary = Color3.fromRGB(255, 255, 255),
-    TextSecondary = Color3.fromRGB(200, 200, 200),
-    Border = Color3.fromRGB(60, 60, 60),
-    Shadow = Color3.fromRGB(0, 0, 0),
-    Overlay = Color3.fromRGB(0, 0, 0, 0.5)
+-- Theme configuration
+AdvancedUILibrary.Themes = {
+    Dark = {
+        Primary = Color3.fromRGB(40, 40, 40),
+        Secondary = Color3.fromRGB(30, 30, 30),
+        Text = Color3.fromRGB(255, 255, 255),
+        Accent = Color3.fromRGB(0, 120, 215),
+        Shadow = Color3.fromRGB(20, 20, 20)
+    },
+    Light = {
+        Primary = Color3.fromRGB(240, 240, 240),
+        Secondary = Color3.fromRGB(220, 220, 220),
+        Text = Color3.fromRGB(0, 0, 0),
+        Accent = Color3.fromRGB(0, 90, 180),
+        Shadow = Color3.fromRGB(180, 180, 180)
+    }
 }
 
-local EASING_STYLES = {
-    Linear = Enum.EasingStyle.Linear,
-    Sine = Enum.EasingStyle.Sine,
-    Back = Enum.EasingStyle.Back,
-    Quad = Enum.EasingStyle.Quad,
-    Quart = Enum.EasingStyle.Quart,
-    Quint = Enum.EasingStyle.Quint,
-    Bounce = Enum.EasingStyle.Bounce,
-    Elastic = Enum.EasingStyle.Elastic
+-- Animation easing functions
+AdvancedUILibrary.EasingStyles = {
+    Linear = function(t) return t end,
+    Quadratic = function(t) return t * t end,
+    Elastic = function(t) return math.sin(13 * math.pi/2 * t) * math.pow(2, 10 * (t - 1)) end
 }
 
-local EASING_DIRECTIONS = {
-    In = Enum.EasingDirection.In,
-    Out = Enum.EasingDirection.Out,
-    InOut = Enum.EasingDirection.InOut
-}
-
--- Utility functions
-local function Create(className, properties)
-    local instance = Instance.new(className)
-    for property, value in pairs(properties) do
-        instance[property] = value
-    end
-    return instance
-end
-
-local function Tween(object, properties, duration, easingStyle, easingDirection)
-    easingStyle = easingStyle or Enum.EasingStyle.Quad
-    easingDirection = easingDirection or Enum.EasingDirection.Out
-    local tweenInfo = TweenInfo.new(duration, easingStyle, easingDirection)
-    local tween = game:GetService("TweenService"):Create(object, tweenInfo, properties)
-    tween:Play()
-    return tween
-end
-
-local function DeepCopy(original)
-    local copy = {}
-    for k, v in pairs(original) do
-        if type(v) == "table" then
-            v = DeepCopy(v)
-        end
-        copy[k] = v
-    end
-    return copy
-end
-
-local function Round(num, decimalPlaces)
-    local mult = 10^(decimalPlaces or 0)
-    return math.floor(num * mult + 0.5) / mult
-end
-
-local function IsMobile()
-    return game:GetService("UserInputService").TouchEnabled and not game:GetService("UserInputService").KeyboardEnabled
-end
-
--- Core UI functions
-function AdvancedUILibrary.new(screenGuiParent)
+-- Create a new UI instance
+function AdvancedUILibrary.new(themeName, parent)
     local self = setmetatable({}, AdvancedUILibrary)
     
-    self.ScreenGui = Create("ScreenGui", {
-        Parent = screenGuiParent or game:GetService("CoreGui"),
-        ResetOnSpawn = false,
-        ZIndexBehavior = Enum.ZIndexBehavior.Global,
-        DisplayOrder = 10,
-        IgnoreGuiInset = true
-    })
+    self.Theme = AdvancedUILibrary.Themes[themeName] or AdvancedUILibrary.Themes.Dark
+    self.Parent = parent or game:GetService("CoreGui")
+    self.Elements = {}
+    self.ActiveAnimations = {}
     
-    self.Theme = DeepCopy(DEFAULT_THEME)
-    self.Components = {}
-    self.ActivePopups = {}
-    self.Animations = {}
-    self.EventListeners = {}
+    -- Create main screen GUI
+    self.ScreenGui = Instance.new("ScreenGui")
+    self.ScreenGui.Name = "AdvancedUILibrary_" .. tostring(math.random(10000, 99999))
+    self.ScreenGui.ResetOnSpawn = false
+    self.ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+    self.ScreenGui.DisplayOrder = 999
+    self.ScreenGui.Parent = self.Parent
+    
+    -- Input handling
+    self.InputBegan = Instance.new("BindableEvent")
+    self.InputEnded = Instance.new("BindableEvent")
+    
+    -- Security measures
+    self.LastInputTime = tick()
+    self.InputRateLimit = 0.1 -- seconds
     
     return self
 end
 
-function AdvancedUILibrary:SetTheme(customTheme)
-    for key, value in pairs(customTheme) do
-        if self.Theme[key] ~= nil then
-            self.Theme[key] = value
+-- Base element template
+function AdvancedUILibrary:CreateElement(elementType, properties)
+    local element = Instance.new(elementType)
+    
+    -- Apply default properties based on theme
+    if element:IsA("TextButton") or element:IsA("TextLabel") or element:IsA("TextBox") then
+        element.TextColor3 = self.Theme.Text
+        element.BackgroundColor3 = self.Theme.Primary
+        element.Font = Enum.Font.SourceSansSemibold
+    end
+    
+    if element:IsA("Frame") or element:IsA("ScrollingFrame") then
+        element.BackgroundColor3 = self.Theme.Secondary
+    end
+    
+    -- Apply custom properties
+    for prop, value in pairs(properties) do
+        if element[prop] ~= nil then
+            element[prop] = value
         end
     end
     
-    -- Update all existing components
-    for _, component in pairs(self.Components) do
-        if component.UpdateTheme then
-            component:UpdateTheme(self.Theme)
-        end
-    end
+    -- Add to elements table
+    table.insert(self.Elements, element)
+    
+    return element
 end
 
-function AdvancedUILibrary:CreateWindow(title, size, position, closable)
-    local windowId = "Window_" .. #self.Components + 1
-    local windowSize = size or UDim2.new(0.4, 0, 0.5, 0)
-    local windowPosition = position or UDim2.new(0.3, 0, 0.25, 0)
-    
-    local windowFrame = Create("Frame", {
-        Name = windowId,
-        Parent = self.ScreenGui,
-        Size = windowSize,
-        Position = windowPosition,
-        BackgroundColor3 = self.Theme.Surface,
-        BorderColor3 = self.Theme.Border,
-        BorderSizePixel = 1,
+-- Advanced Button with animations
+function AdvancedUILibrary:CreateButton(properties)
+    local button = self:CreateElement("TextButton", {
+        Size = UDim2.new(0, 200, 0, 50),
+        Text = "Button",
+        TextSize = 14,
+        AutoButtonColor = false,
         ClipsDescendants = true,
-        Active = true,
-        ZIndex = 10
+        Parent = properties.Parent or self.ScreenGui
     })
     
-    local shadow = Create("ImageLabel", {
-        Name = "Shadow",
-        Parent = windowFrame,
-        Size = UDim2.new(1, 10, 1, 10),
-        Position = UDim2.new(0, -5, 0, -5),
-        BackgroundTransparency = 1,
-        Image = "rbxassetid://1316045217",
-        ImageColor3 = self.Theme.Shadow,
-        ImageTransparency = 0.8,
-        ScaleType = Enum.ScaleType.Slice,
-        SliceCenter = Rect.new(10, 10, 118, 118),
-        ZIndex = 9
+    -- Apply custom properties
+    for prop, value in pairs(properties) do
+        if button[prop] ~= nil then
+            button[prop] = value
+        end
+    end
+    
+    -- UI Stroke
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = self.Theme.Shadow
+    stroke.Thickness = 1
+    stroke.Parent = button
+    
+    -- Hover effect
+    local hoverFrame = Instance.new("Frame")
+    hoverFrame.Size = UDim2.new(1, 0, 1, 0)
+    hoverFrame.BackgroundColor3 = Color3.new(1, 1, 1)
+    hoverFrame.BackgroundTransparency = 0.9
+    hoverFrame.Parent = button
+    
+    -- Click effect
+    local clickEffect = Instance.new("Frame")
+    clickEffect.Size = UDim2.new(0, 0, 0, 0)
+    clickEffect.Position = UDim2.new(0.5, 0, 0.5, 0)
+    clickEffect.AnchorPoint = Vector2.new(0.5, 0.5)
+    clickEffect.BackgroundColor3 = Color3.new(1, 1, 1)
+    clickEffect.BackgroundTransparency = 0.8
+    clickEffect.Parent = button
+    
+    -- Button animations
+    button.MouseEnter:Connect(function()
+        self:Animate(hoverFrame, {BackgroundTransparency = 0.8}, 0.2, "Quadratic")
+    end)
+    
+    button.MouseLeave:Connect(function()
+        self:Animate(hoverFrame, {BackgroundTransparency = 0.9}, 0.2, "Quadratic")
+    end)
+    
+    button.MouseButton1Down:Connect(function(x, y)
+        self:Animate(button, {Size = UDim2.new(0, 190, 0, 48)}, 0.1, "Quadratic")
+        clickEffect.Size = UDim2.new(0, 0, 0, 0)
+        clickEffect.Position = UDim2.new(x/button.AbsoluteSize.X, 0, y/button.AbsoluteSize.Y, 0)
+        self:Animate(clickEffect, {
+            Size = UDim2.new(2, 0, 2, 0),
+            Position = UDim2.new(-0.5, 0, -0.5, 0),
+            BackgroundTransparency = 1
+        }, 0.5, "Quadratic")
+    end)
+    
+    button.MouseButton1Up:Connect(function()
+        self:Animate(button, {Size = UDim2.new(0, 200, 0, 50)}, 0.1, "Quadratic")
+    end)
+    
+    return button
+end
+
+-- Advanced Toggle Switch
+function AdvancedUILibrary:CreateToggle(properties)
+    local toggleFrame = self:CreateElement("Frame", {
+        Size = UDim2.new(0, 50, 0, 25),
+        BackgroundColor3 = self.Theme.Secondary,
+        Parent = properties.Parent or self.ScreenGui
     })
     
-    local titleBar = Create("Frame", {
-        Name = "TitleBar",
-        Parent = windowFrame,
-        Size = UDim2.new(1, 0, 0, 30),
+    local toggleButton = self:CreateElement("TextButton", {
+        Size = UDim2.new(0, 25, 0, 25),
+        BackgroundColor3 = self.Theme.Accent,
+        Text = "",
+        Parent = toggleFrame
+    })
+    
+    local state = properties.Default or false
+    
+    -- Update toggle position based on state
+    local function updateToggle()
+        if state then
+            self:Animate(toggleButton, {Position = UDim2.new(1, -25, 0, 0)}, 0.2, "Quadratic")
+            toggleFrame.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+        else
+            self:Animate(toggleButton, {Position = UDim2.new(0, 0, 0, 0)}, 0.2, "Quadratic")
+            toggleFrame.BackgroundColor3 = self.Theme.Secondary
+        end
+    end
+    
+    toggleButton.MouseButton1Click:Connect(function()
+        state = not state
+        updateToggle()
+        if properties.Callback then
+            properties.Callback(state)
+        end
+    end)
+    
+    updateToggle()
+    
+    return toggleFrame
+end
+
+-- Advanced Slider
+function AdvancedUILibrary:CreateSlider(properties)
+    local sliderFrame = self:CreateElement("Frame", {
+        Size = UDim2.new(0, 200, 0, 25),
+        BackgroundColor3 = self.Theme.Secondary,
+        Parent = properties.Parent or self.ScreenGui
+    })
+    
+    local fill = self:CreateElement("Frame", {
+        Size = UDim2.new(0, 0, 1, 0),
+        BackgroundColor3 = self.Theme.Accent,
+        Parent = sliderFrame
+    })
+    
+    local handle = self:CreateElement("TextButton", {
+        Size = UDim2.new(0, 15, 1, 0),
+        BackgroundColor3 = Color3.new(1, 1, 1),
+        Text = "",
+        Parent = sliderFrame
+    })
+    
+    local min = properties.Min or 0
+    local max = properties.Max or 100
+    local value = properties.Default or min
+    
+    local function updateSlider(val)
+        value = math.clamp(val, min, max)
+        local ratio = (value - min) / (max - min)
+        fill.Size = UDim2.new(ratio, 0, 1, 0)
+        handle.Position = UDim2.new(ratio, -7, 0, 0)
+        
+        if properties.Callback then
+            properties.Callback(value)
+        end
+    end
+    
+    local function getValueFromX(x)
+        local relativeX = x - sliderFrame.AbsolutePosition.X
+        local ratio = math.clamp(relativeX / sliderFrame.AbsoluteSize.X, 0, 1)
+        return min + (max - min) * ratio
+    end
+    
+    handle.MouseButton1Down:Connect(function()
+        local connection
+        local startPos = game:GetService("UserInputService"):GetMouseLocation().X
+        local startValue = value
+        
+        connection = game:GetService("UserInputService").InputChanged:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseMovement then
+                local currentPos = input.Position.X
+                local delta = currentPos - startPos
+                local newValue = startValue + (delta / sliderFrame.AbsoluteSize.X) * (max - min)
+                updateSlider(newValue)
+            end
+        end)
+        
+        game:GetService("UserInputService").InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                connection:Disconnect()
+            end
+        end)
+    end)
+    
+    sliderFrame.MouseButton1Down:Connect(function(x, y)
+        local absoluteX = x + sliderFrame.AbsolutePosition.X
+        updateSlider(getValueFromX(absoluteX))
+    end)
+    
+    updateSlider(value)
+    
+    return sliderFrame
+end
+
+-- Advanced Text Input
+function AdvancedUILibrary:CreateTextInput(properties)
+    local inputFrame = self:CreateElement("Frame", {
+        Size = UDim2.new(0, 200, 0, 40),
         BackgroundColor3 = self.Theme.Primary,
-        BorderSizePixel = 0,
-        ZIndex = 11
+        Parent = properties.Parent or self.ScreenGui
     })
     
-    local titleLabel = Create("TextLabel", {
-        Name = "TitleLabel",
-        Parent = titleBar,
+    local textBox = self:CreateElement("TextBox", {
+        Size = UDim2.new(1, -10, 1, -10),
+        Position = UDim2.new(0, 5, 0, 5),
+        BackgroundTransparency = 1,
+        Text = properties.Placeholder or "",
+        TextColor3 = self.Theme.Text,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ClearTextOnFocus = properties.ClearTextOnFocus or false,
+        Parent = inputFrame
+    })
+    
+    local placeholderText = properties.Placeholder or ""
+    local placeholderColor = Color3.fromRGB(180, 180, 180)
+    
+    if properties.Placeholder then
+        textBox.FocusLost:Connect(function()
+            if textBox.Text == "" then
+                textBox.Text = placeholderText
+                textBox.TextColor3 = placeholderColor
+            end
+        end)
+        
+        textBox.Focused:Connect(function()
+            if textBox.Text == placeholderText then
+                textBox.Text = ""
+                textBox.TextColor3 = self.Theme.Text
+            end
+        end)
+    end
+    
+    textBox.FocusLost:Connect(function(enterPressed)
+        if properties.Callback then
+            properties.Callback(textBox.Text, enterPressed)
+        end
+    end)
+    
+    return inputFrame
+end
+
+-- Animation system
+function AdvancedUILibrary:Animate(instance, properties, duration, easingStyle)
+    local startTime = tick()
+    local startValues = {}
+    
+    for prop, _ in pairs(properties) do
+        startValues[prop] = instance[prop]
+    end
+    
+    local animationId = #self.ActiveAnimations + 1
+    self.ActiveAnimations[animationId] = true
+    
+    local easingFunc = AdvancedUILibrary.EasingStyles[easingStyle] or AdvancedUILibrary.EasingStyles.Linear
+    
+    coroutine.wrap(function()
+        while tick() - startTime < duration and self.ActiveAnimations[animationId] do
+            local alpha = easingFunc((tick() - startTime) / duration)
+            
+            for prop, targetValue in pairs(properties) do
+                if typeof(targetValue) == "number" then
+                    instance[prop] = startValues[prop] + (targetValue - startValues[prop]) * alpha
+                elseif typeof(targetValue) == "Color3" then
+                    instance[prop] = startValues[prop]:Lerp(targetValue, alpha)
+                elseif targetValue.ClassName == "UDim2" then
+                    instance[prop] = UDim2.new(
+                        startValues[prop].X.Scale + (targetValue.X.Scale - startValues[prop].X.Scale) * alpha,
+                        startValues[prop].X.Offset + (targetValue.X.Offset - startValues[prop].X.Offset) * alpha,
+                        startValues[prop].Y.Scale + (targetValue.Y.Scale - startValues[prop].Y.Scale) * alpha,
+                        startValues[prop].Y.Offset + (targetValue.Y.Offset - startValues[prop].Y.Offset) * alpha
+                    )
+                end
+            end
+            
+            game:GetService("RunService").Heartbeat:Wait()
+        end
+        
+        -- Ensure final values are set
+        if self.ActiveAnimations[animationId] then
+            for prop, targetValue in pairs(properties) do
+                instance[prop] = targetValue
+            end
+        end
+        
+        self.ActiveAnimations[animationId] = nil
+    end)()
+    
+    return animationId
+end
+
+-- Stop animation
+function AdvancedUILibrary:StopAnimation(animationId)
+    self.ActiveAnimations[animationId] = false
+end
+
+-- Create a window container
+function AdvancedUILibrary:CreateWindow(properties)
+    local window = self:CreateElement("Frame", {
+        Size = UDim2.new(0, 400, 0, 500),
+        BackgroundColor3 = self.Theme.Primary,
+        Parent = properties.Parent or self.ScreenGui
+    })
+    
+    local titleBar = self:CreateElement("Frame", {
+        Size = UDim2.new(1, 0, 0, 30),
+        BackgroundColor3 = self.Theme.Accent,
+        Parent = window
+    })
+    
+    local titleLabel = self:CreateElement("TextLabel", {
         Size = UDim2.new(1, -60, 1, 0),
         Position = UDim2.new(0, 10, 0, 0),
         BackgroundTransparency = 1,
-        Text = title or "Window",
-        TextColor3 = self.Theme.TextPrimary,
+        Text = properties.Title or "Window",
+        TextColor3 = self.Theme.Text,
         TextXAlignment = Enum.TextXAlignment.Left,
-        Font = Enum.Font.GothamSemibold,
-        TextSize = 14,
-        ZIndex = 12
+        Parent = titleBar
     })
     
-    local closeButton
-    if closable ~= false then
-        closeButton = Create("TextButton", {
-            Name = "CloseButton",
-            Parent = titleBar,
-            Size = UDim2.new(0, 30, 1, 0),
-            Position = UDim2.new(1, -30, 0, 0),
-            BackgroundColor3 = self.Theme.Danger,
-            BorderSizePixel = 0,
-            Text = "×",
-            TextColor3 = self.Theme.TextPrimary,
-            Font = Enum.Font.GothamBold,
-            TextSize = 18,
-            ZIndex = 12
-        })
-        
-        closeButton.MouseEnter:Connect(function()
-            Tween(closeButton, {BackgroundColor3 = Color3.fromRGB(200, 50, 50)}, 0.2)
-        end)
-        
-        closeButton.MouseLeave:Connect(function()
-            Tween(closeButton, {BackgroundColor3 = self.Theme.Danger}, 0.2)
-        end)
-        
-        closeButton.MouseButton1Click:Connect(function()
-            windowFrame:Destroy()
-            self.Components[windowId] = nil
-        end)
-    end
+    local closeButton = self:CreateElement("TextButton", {
+        Size = UDim2.new(0, 30, 0, 30),
+        Position = UDim2.new(1, -30, 0, 0),
+        BackgroundColor3 = Color3.fromRGB(255, 80, 80),
+        Text = "X",
+        TextColor3 = Color3.new(1, 1, 1),
+        Parent = titleBar
+    })
     
-    local contentFrame = Create("Frame", {
-        Name = "Content",
-        Parent = windowFrame,
+    local contentFrame = self:CreateElement("ScrollingFrame", {
         Size = UDim2.new(1, 0, 1, -30),
         Position = UDim2.new(0, 0, 0, 30),
-        BackgroundColor3 = self.Theme.Surface,
-        BorderSizePixel = 0,
-        ClipsDescendants = true,
-        ZIndex = 10
+        BackgroundTransparency = 1,
+        ScrollBarThickness = 5,
+        Parent = window
     })
     
-    local uiListLayout = Create("UIListLayout", {
-        Parent = contentFrame,
-        SortOrder = Enum.SortOrder.LayoutOrder,
-        Padding = UDim.new(0, 5)
-    })
+    local uiListLayout = Instance.new("UIListLayout")
+    uiListLayout.Padding = UDim.new(0, 5)
+    uiListLayout.Parent = contentFrame
     
-    local uiPadding = Create("UIPadding", {
-        Parent = contentFrame,
-        PaddingLeft = UDim.new(0, 10),
-        PaddingRight = UDim.new(0, 10),
-        PaddingTop = UDim.new(0, 10),
-        PaddingBottom = UDim.new(0, 10)
-    })
-    
-    -- Draggable window functionality
+    -- Make window draggable
     local dragging
     local dragInput
     local dragStart
     local startPos
     
-    local function Update(input)
-        local delta = input.Position - dragStart
-        local newPos = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        windowFrame.Position = newPos
-    end
-    
     titleBar.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = true
             dragStart = input.Position
-            startPos = windowFrame.Position
+            startPos = window.Position
             
             input.Changed:Connect(function()
                 if input.UserInputState == Enum.UserInputState.End then
@@ -262,201 +441,119 @@ function AdvancedUILibrary:CreateWindow(title, size, position, closable)
     end)
     
     titleBar.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        if input.UserInputType == Enum.UserInputType.MouseMovement then
             dragInput = input
         end
     end)
     
     game:GetService("UserInputService").InputChanged:Connect(function(input)
         if input == dragInput and dragging then
-            Update(input)
+            local delta = input.Position - dragStart
+            window.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
         end
     end)
     
-    -- Window component table
-    local windowComponent = {
-        Instance = windowFrame,
-        TitleBar = titleBar,
+    -- Close button functionality
+    closeButton.MouseButton1Click:Connect(function()
+        self:Animate(window, {Size = UDim2.new(0, 400, 0, 0)}, 0.2, "Quadratic")
+        task.wait(0.2)
+        window:Destroy()
+    end)
+    
+    -- Update content frame size when elements are added
+    uiListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        contentFrame.CanvasSize = UDim2.new(0, 0, 0, uiListLayout.AbsoluteContentSize.Y)
+    end)
+    
+    return {
+        Frame = window,
         Content = contentFrame,
-        CloseButton = closeButton,
-        UpdateTheme = function(theme)
-            windowFrame.BackgroundColor3 = theme.Surface
-            windowFrame.BorderColor3 = theme.Border
-            titleBar.BackgroundColor3 = theme.Primary
-            titleLabel.TextColor3 = theme.TextPrimary
-            contentFrame.BackgroundColor3 = theme.Surface
-            shadow.ImageColor3 = theme.Shadow
-            
-            if closeButton then
-                closeButton.BackgroundColor3 = theme.Danger
-                closeButton.TextColor3 = theme.TextPrimary
-            end
-        end,
-        SetTitle = function(newTitle)
-            titleLabel.Text = newTitle
-        end,
-        AddTab = function(tabName)
-            -- Tab system implementation would go here
-        end,
-        Minimize = function()
-            -- Minimize functionality would go here
-        end,
-        Destroy = function()
-            windowFrame:Destroy()
-            self.Components[windowId] = nil
-        end
+        TitleBar = titleBar,
+        CloseButton = closeButton
     }
-    
-    self.Components[windowId] = windowComponent
-    return windowComponent
 end
 
-function AdvancedUILibrary:CreateButton(parent, text, size, position, onClick)
-    local buttonId = "Button_" .. #self.Components + 1
-    local buttonSize = size or UDim2.new(1, -20, 0, 40)
-    local buttonPosition = position or UDim2.new(0, 10, 0, 0)
+-- Notification system
+function AdvancedUILibrary:Notify(title, message, duration)
+    duration = duration or 5
     
-    local buttonFrame = Create("Frame", {
-        Name = buttonId,
-        Parent = parent,
-        Size = buttonSize,
-        Position = buttonPosition,
+    local notification = self:CreateElement("Frame", {
+        Size = UDim2.new(0, 300, 0, 80),
+        Position = UDim2.new(1, 10, 1, -90),
+        AnchorPoint = Vector2.new(1, 1),
         BackgroundColor3 = self.Theme.Primary,
-        BorderSizePixel = 0,
-        ZIndex = 15
+        Parent = self.ScreenGui
     })
     
-    local buttonCorner = Create("UICorner", {
-        Parent = buttonFrame,
-        CornerRadius = UDim.new(0, 4)
-    })
-    
-    local buttonLabel = Create("TextLabel", {
-        Name = "Label",
-        Parent = buttonFrame,
-        Size = UDim2.new(1, 0, 1, 0),
+    local titleLabel = self:CreateElement("TextLabel", {
+        Size = UDim2.new(1, -10, 0, 20),
+        Position = UDim2.new(0, 5, 0, 5),
         BackgroundTransparency = 1,
-        Text = text or "Button",
-        TextColor3 = self.Theme.TextPrimary,
-        Font = Enum.Font.GothamSemibold,
-        TextSize = 14,
-        ZIndex = 16
+        Text = title,
+        TextColor3 = self.Theme.Accent,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Font = Enum.Font.SourceSansBold,
+        Parent = notification
     })
     
-    local rippleEffect = Create("Frame", {
-        Name = "RippleEffect",
-        Parent = buttonFrame,
-        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-        BackgroundTransparency = 0.8,
-        Size = UDim2.new(0, 0, 0, 0),
-        Position = UDim2.new(0.5, 0, 0.5, 0),
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        ZIndex = 17
+    local messageLabel = self:CreateElement("TextLabel", {
+        Size = UDim2.new(1, -10, 1, -30),
+        Position = UDim2.new(0, 5, 0, 25),
+        BackgroundTransparency = 1,
+        Text = message,
+        TextColor3 = self.Theme.Text,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Top,
+        TextWrapped = true,
+        Parent = notification
     })
     
-    local rippleCorner = Create("UICorner", {
-        Parent = rippleEffect,
-        CornerRadius = UDim.new(1, 0)
+    local closeButton = self:CreateElement("TextButton", {
+        Size = UDim2.new(0, 20, 0, 20),
+        Position = UDim2.new(1, -25, 0, 5),
+        BackgroundColor3 = Color3.fromRGB(255, 80, 80),
+        Text = "X",
+        TextColor3 = Color3.new(1, 1, 1),
+        Parent = notification
     })
     
-    -- Button interactions
-    local function animateRipple(input)
-        local posX, posY = input.Position.X - buttonFrame.AbsolutePosition.X, input.Position.Y - buttonFrame.AbsolutePosition.Y
-        rippleEffect.Position = UDim2.new(0, posX, 0, posY)
-        rippleEffect.Size = UDim2.new(0, 0, 0, 0)
-        rippleEffect.BackgroundTransparency = 0.8
-        rippleEffect.Visible = true
-        
-        local targetSize = math.max(buttonFrame.AbsoluteSize.X, buttonFrame.AbsoluteSize.Y) * 2
-        Tween(rippleEffect, {
-            Size = UDim2.new(0, targetSize, 0, targetSize),
-            BackgroundTransparency = 1,
-            Position = UDim2.new(0, posX - targetSize/2, 0, posY - targetSize/2)
-        }, 0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    local progressBar = self:CreateElement("Frame", {
+        Size = UDim2.new(1, 0, 0, 3),
+        Position = UDim2.new(0, 0, 1, -3),
+        BackgroundColor3 = self.Theme.Accent,
+        Parent = notification
+    })
+    
+    -- Animation
+    notification.Position = UDim2.new(1, 310, 1, -90)
+    self:Animate(notification, {Position = UDim2.new(1, 10, 1, -90)}, 0.3, "Quadratic")
+    
+    self:Animate(progressBar, {Size = UDim2.new(0, 0, 0, 3)}, duration, "Linear")
+    
+    local function close()
+        self:Animate(notification, {Position = UDim2.new(1, 310, 1, -90)}, 0.3, "Quadratic")
+        task.wait(0.3)
+        notification:Destroy()
     end
     
-    buttonFrame.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            Tween(buttonFrame, {BackgroundColor3 = Color3.fromRGB(
-                math.floor(self.Theme.Primary.R * 255 * 0.8),
-                math.floor(self.Theme.Primary.G * 255 * 0.8),
-                math.floor(self.Theme.Primary.B * 255 * 0.8)
-            )}, 0.1)
-            animateRipple(input)
-        end
-    end)
+    closeButton.MouseButton1Click:Connect(close)
     
-    buttonFrame.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            Tween(buttonFrame, {BackgroundColor3 = self.Theme.Primary}, 0.2)
-        end
-    end)
-    
-    buttonFrame.MouseEnter:Connect(function()
-        Tween(buttonFrame, {BackgroundColor3 = Color3.fromRGB(
-            math.floor(self.Theme.Primary.R * 255 * 0.9),
-            math.floor(self.Theme.Primary.G * 255 * 0.9),
-            math.floor(self.Theme.Primary.B * 255 * 0.9)
-        )}, 0.2)
-    end)
-    
-    buttonFrame.MouseLeave:Connect(function()
-        Tween(buttonFrame, {BackgroundColor3 = self.Theme.Primary}, 0.2)
-    end)
-    
-    if onClick then
-        buttonFrame.MouseButton1Click:Connect(onClick)
+    task.delay(duration, close)
+end
+
+-- Cleanup all UI elements
+function AdvancedUILibrary:Destroy()
+    for _, element in pairs(self.Elements) do
+        element:Destroy()
     end
     
-    -- Button component table
-    local buttonComponent = {
-        Instance = buttonFrame,
-        Label = buttonLabel,
-        UpdateTheme = function(theme)
-            buttonFrame.BackgroundColor3 = theme.Primary
-            buttonLabel.TextColor3 = theme.TextPrimary
-        end,
-        SetText = function(newText)
-            buttonLabel.Text = newText
-        end,
-        SetDisabled = function(disabled)
-            buttonFrame.Active = not disabled
-            if disabled then
-                Tween(buttonFrame, {BackgroundColor3 = Color3.fromRGB(100, 100, 100)}, 0.2)
-            else
-                Tween(buttonFrame, {BackgroundColor3 = self.Theme.Primary}, 0.2)
-            end
-        end,
-        Destroy = function()
-            buttonFrame:Destroy()
-            self.Components[buttonId] = nil
-        end
-    }
-    
-    self.Components[buttonId] = buttonComponent
-    return buttonComponent
-end
-
--- More UI components would follow (TextBox, Toggle, Slider, Dropdown, etc.)
-
-function AdvancedUILibrary:CreateNotification(title, message, duration, notificationType)
-    -- Notification system implementation would go here
-end
-
-function AdvancedUILibrary:CreateModal(title, message, buttons)
-    -- Modal dialog implementation would go here
-end
-
-function AdvancedUILibrary:DestroyAll()
-    for _, component in pairs(self.Components) do
-        if component.Destroy then
-            component:Destroy()
-        else
-            component.Instance:Destroy()
-        end
-    end
-    self.Components = {}
     self.ScreenGui:Destroy()
+    self.InputBegan:Destroy()
+    self.InputEnded:Destroy()
+    
+    for id, _ in pairs(self.ActiveAnimations) do
+        self.ActiveAnimations[id] = false
+    end
 end
 
 return AdvancedUILibrary
